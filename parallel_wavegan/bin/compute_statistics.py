@@ -14,9 +14,59 @@ import numpy as np
 import yaml
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
+import dlp_mpi
 
 from parallel_wavegan.datasets import MelDataset, MelSCPDataset
 from parallel_wavegan.utils import read_hdf5, write_hdf5
+
+
+def pairwise_mean_var_update(means_: list, vars_: list, n_samples_seen_: list):
+    """Global mean and variance computation from sample mean and variance.
+
+    Implementation of (1.5a) and (1.5b) described in:
+    T. Chan, G. Golub, R. LeVeque. Algorithms for computing the sample
+        variance: recommendations, The American Statistician, Vol. 37, No. 3,
+        pp. 242-247
+
+    >>> rng = np.random.default_rng(0)
+    >>> m1 = rng.normal(scale=2, size=(100, 2))
+    >>> m2 = rng.normal(loc=1, size=(200, 2))
+    >>> scaler = StandardScaler().fit(np.concatenate((m1, m2)))
+    >>> scaler.mean_, scaler.scale_
+    (array([0.55809324, 0.73998954]), array([1.4801906 , 1.41725947]))
+    >>> scaler_m1 = StandardScaler().fit(m1)
+    >>> scaler_m1.mean_, scaler_m1.scale_
+    (array([-0.14158778,  0.20264034]), array([1.93953458, 1.88941199]))
+    >>> scaler_m2 = StandardScaler().fit(m2)
+    >>> scaler_m2.mean_, scaler_m2.scale_
+    (array([0.90793375, 1.00866414]), array([1.01901126, 1.00570357]))
+    >>> pairwise_mean_var_update(
+    ...     [scaler_m1.mean_, scaler_m2.mean_],
+    ...     [scaler_m1.var_, scaler_m2.var_],
+    ...     [scaler_m1.n_samples_seen_, scaler_m2.n_samples_seen_]
+    ... )
+    (array([0.55809324, 0.73998954]), array([1.48019059, 1.41725947]))
+    """
+    total_n_samples_seen = n_samples_seen_[0]
+    global_sum = means_[0] * total_n_samples_seen
+    global_sum_squares = vars_[0] * total_n_samples_seen
+    for mean, var, n_samples in zip(means_[1:], vars_[1:], n_samples_seen_[1:]):
+        T = mean * n_samples  # sum
+        sum_squares = var * n_samples  # sum of squares
+        global_sum_squares += (
+            sum_squares
+            + (
+                total_n_samples_seen
+                / (n_samples * (total_n_samples_seen + n_samples))
+            )
+            * (n_samples / (total_n_samples_seen + 1e-5) * global_sum - T) ** 2
+        )
+        global_sum += T
+        total_n_samples_seen += n_samples
+    global_mean = global_sum / total_n_samples_seen
+    global_var = global_sum_squares / total_n_samples_seen
+    global_scale = np.sqrt(global_var)
+    return global_mean, global_scale
 
 
 def main():
