@@ -1,6 +1,6 @@
 # cuda related
-export CUDA_HOME=/usr/local/cuda-11.3
-export LD_LIBRARY_PATH="${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}"
+# export CUDA_HOME=/usr/local/cuda-11.3
+# export LD_LIBRARY_PATH="${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}"
 
 # path related
 export PRJ_ROOT="${PWD}/../../.."
@@ -15,6 +15,8 @@ export PYTHONIOENCODING=UTF-8
 export MPL_BACKEND=Agg
 
 # check installation
+python -c "import librosa" || exit 1;
+python -c "import soundfile" || exit 1;
 if ! command -v parallel-wavegan-train > /dev/null; then
     echo "Error: It seems setup is not finished." >&2
     echo "Error: Please setup your environment by following README.md" >&2
